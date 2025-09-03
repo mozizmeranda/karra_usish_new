@@ -188,12 +188,12 @@ async def get_start(message: types.Message, state: FSMContext):
         d = args.split("--")
         # print("d 3- ", d)
         database.insert_into(message.from_user.id, d[0], f"+{d[1]}", d[2], d[3], d[4])
-        # contact_id = create_lead(d[0], f'+{d[1]}')
+        contact_id = create_lead(d[0], f'+{d[1]}')
         l = {
             "name": d[0],
             "number": f"+{d[1]}",
             "from_landing": 1,
-            "contact_id": 1
+            "contact_id": contact_id
         }
 
 

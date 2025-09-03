@@ -171,9 +171,9 @@ async def broadcast_handler(message: types.Message, state: FSMContext):
 async def get_start(message: types.Message, state: FSMContext):
     args = message.get_args()
     if args:
-        greet = """<b>Вебинарга хавола:\nhttps://start.bizon365.ru/room/alimov/tadbirkor2x</b>"""
-        # await message.answer_document("BQACAgIAAxkDAAM-aK2dVGpzjy8d0t16_0OrFfsCHe0AAvCFAAKUt3BJnvhn9u1OxUc2BA",
-        #                               caption="Чек-лист")
+        greet = """Вебинар учун руйхатдан утдингиз, рахмат. Вебинарга 1 соат олдин хаволани жонатамиз."""
+        await message.answer_document("BQACAgIAAxkDAAM-aK2dVGpzjy8d0t16_0OrFfsCHe0AAvCFAAKUt3BJnvhn9u1OxUc2BA",
+                                      caption="Чек-лист")
         # await bot.send_document(chat_id=message.from_user.id, document="BQACAgIAAxkDAAM-aK2dVGpzjy8d0t16_0OrFfsCHe0AAvCFAAKUt3BJnvhn9u1OxUc2BA")
         await message.answer(greet)
         await message.answer(

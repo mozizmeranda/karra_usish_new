@@ -42,8 +42,8 @@ async def broadcast(message: types.Message, state: FSMContext):
 
 @dp.message_handler(commands=['all'])
 async def get_all(message: types.Message):
-    slot = message.text.split(" ")[1]
-    users = database.get_all_data(slot)
+    # slot = message.text.split(" ")[1]
+    users = database.get_all_users()
     msg = ""
     file_path = "users.txt"
     for i in users:
@@ -187,7 +187,8 @@ async def get_start(message: types.Message, state: FSMContext):
         # print(args)
         d = args.split("--")
         # print("d 3- ", d)
-        database.insert_into(message.from_user.id, d[0], f"+{d[1]}", d[2], d[3], d[4])
+        # database.insert_into(message.from_user.id, d[0], f"+{d[1]}", d[2], d[3], d[4])
+        database.insert_into_two_params(message.from_user.id, d[0], f"+{d[1]}")
         contact_id = create_lead(d[0], f'+{d[1]}')
         l = {
             "name": d[0],

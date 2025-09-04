@@ -35,6 +35,11 @@ class Database:
                "date TEXT)")
         self.execute(sql, commit=True)
 
+    def insert_into_two_params(self, id: int, name: str, number: str):
+        sql = "INSERT OR IGNORE INTO Users(id, name, number) VALUES (?, ?, ?)"
+        parameters = (id, name, number)
+        self.execute(sql, parameters=parameters, commit=True)
+
     def insert_into(self, id: int, name: str, number: str, landing, date, time_slot):
         sql = "INSERT OR IGNORE INTO Users(id, name, number, landing, date, time_slot) VALUES (?, ?, ?, ?, ?, ?)"
         parameters = (id, name, number, landing, date, time_slot)

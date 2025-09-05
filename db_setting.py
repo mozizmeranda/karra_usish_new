@@ -46,7 +46,7 @@ class Database:
         self.execute(sql, parameters=parameters, commit=True)
 
     def get_all_users(self):
-        sql = "SELECT id FROM Users"
+        sql = "SELECT * FROM Users"
         data = self.execute(sql, fetchall=True)
         return data
 

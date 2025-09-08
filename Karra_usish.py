@@ -171,7 +171,7 @@ async def broadcast_handler(message: types.Message, state: FSMContext):
 async def get_start(message: types.Message, state: FSMContext):
     args = message.get_args()
     if args:
-        print(args)
+        # print(args)
         greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
         # await message.answer_document("BQACAgIAAxkDAAMPaLgQKANtA7gM3PjdvQbJI1k3hFsAAsN5AAI1K8BJ2OQxJcGSJfM2BA",
         #                               caption="Чек-лист")

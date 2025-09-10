@@ -108,7 +108,7 @@ def create_lead(full_name: str, number):
     lead_data = [
         {
             "name": full_name,
-            "pipeline_id": 10046545,
+            "pipeline_id": 9287082,
             "_embedded": {"contacts": [{"id": con_id}]}
         }
     ]

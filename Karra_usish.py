@@ -275,7 +275,7 @@ async def get_(call: types.CallbackQuery, state: FSMContext):
         #     role=data['role'],
         #     number=data['number']
         # )
-        contact_new_data(data['contact_id'], data['num_emploeyes'], data['turnover'], data['number'])
+        contact_new_data(data['contact_id'], data['num_emploeyes'], data['turnover'], data['role'])
 
         # if data['from_landing'] == 0:
         #     lead_create_without_landing(data['number'], data['name'])

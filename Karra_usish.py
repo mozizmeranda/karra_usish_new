@@ -154,6 +154,7 @@ async def broadcast_handler(message: types.Message, state: FSMContext):
                     chat_id=i[0],
                     text=message.html_text
                 )
+                print(i[0])
             except Exception as e:
                 user = database.get_user_by_id(int(i[0]))
                 msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"

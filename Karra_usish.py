@@ -174,7 +174,7 @@ async def get_start(message: types.Message, state: FSMContext):
         # print(args)
         greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
         await message.answer_document(
-            document="https://karra-ushish.uz/Check list.pdf",
+            document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
             caption="Чек-лист"
         )
 

@@ -50,6 +50,11 @@ class Database:
         data = self.execute(sql, fetchall=True)
         return data
 
+    def get_all_ids(self):
+        sql = "SELECT id FROM Users"
+        data = self.execute(sql, fetchall=True)
+        return data
+
     def get_all_users_by_landing_1(self):
         sql = "SELECT number FROM Users WHERE landing=2"
         data = self.execute(sql, fetchall=True)

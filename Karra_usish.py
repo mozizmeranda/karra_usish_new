@@ -33,7 +33,7 @@ async def on_startup(dispatcher):
 
 @dp.message_handler(commands=['rs'])
 async def broadcast(message: types.Message, state: FSMContext):
-    if message.from_user.id in [3325847, 6287458105, 827950639]:
+    if message.from_user.id in [3325847, 6287458105, 827950639, 1150929995, 2104263081]:
         await state.set_state("broadcast")
         await message.reply("Введите текст для рассылки.")
     else:
@@ -111,7 +111,7 @@ async def insert(message: types.Message, state: FSMContext):
 @dp.message_handler(content_types=types.ContentTypes.ANY, state="broadcast")
 async def broadcast_handler(message: types.Message, state: FSMContext):
 
-    users = set(database.get_all_users())
+    users = set(database.get_all_ids())
     msg = ""
     if message.document:
         for i in users:
@@ -160,7 +160,7 @@ async def broadcast_handler(message: types.Message, state: FSMContext):
 
     with open("rs.txt", "w") as f:
         f.write(msg)
-    await message.answer_document(InputFile("rs.txt"), caption="Те до которых не дошла рассылка.")
+    await message.answer_document(document=open("rs.txt", "rb"), caption="Те до которых не дошла рассылка.")
 
     await message.answer("Рассылка завершена!")
 

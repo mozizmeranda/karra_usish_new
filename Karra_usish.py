@@ -173,9 +173,12 @@ async def get_start(message: types.Message, state: FSMContext):
     if args:
         # print(args)
         greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
-        # await message.answer_document("BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
-        #                               caption="Чек-лист")
-        await bot.send_document(chat_id=message.from_user.id, document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ")
+        await message.answer_document(
+            document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
+            caption="Чек-лист"
+        )
+
+        # await bot.send_document(chat_id=message.from_user.id, document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ")
         await message.answer(greet)
         await message.answer(
             " Бизнинг вебинарга яхшироқ "

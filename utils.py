@@ -1,74 +1,19 @@
-from amocrm.v2 import Contact as _Contact
-from amocrm.v2 import Lead as _Lead
-from amocrm.v2 import custom_field
-from amocrm.v2 import tokens
 from config import *
-from config import amocrm_token
-import requests
-import json
+import httpx
+import asyncio
 
 
-tokens.default_token_manager(
-        client_id=client_id,
-        client_secret=client_secret,
-        subdomain=subdomain,
-        redirect_url="https://ya.ru/",
-        storage=tokens.FileTokensStorage(),
+PIPELINE_ID = 10578617
+
+# ✅ Создаем единый httpx клиент
+http_client = httpx.AsyncClient(
+    timeout=10.0,
+    limits=httpx.Limits(
+        max_keepalive_connections=50,
+        max_connections=100,
+        keepalive_expiry=30
     )
-
-
-class Contact(_Contact):
-    empl = custom_field.TextCustomField("рабочие")
-    num_employees = custom_field.TextCustomField("num_emploeyes")
-    turnover = custom_field.TextCustomField("оборот")
-    role = custom_field.TextCustomField("роль")
-    number = custom_field.ContactPhoneField(name="Телефон")
-
-
-class Lead(_Lead):
-    phone = custom_field.TextCustomField("phone")
-
-
-def create_contact(name: str, number: str):
-    contact = Contact.objects.create(
-        name=name
-    )
-    contact.number = number
-    contact.save()
-
-
-def contact_save(num_emploeyes: str, turnover: str, role: str, number: str):
-    contact = Contact.objects.get(query=number)
-    contact.num_emploeyes = num_emploeyes
-    contact.empl = num_emploeyes
-    contact.turnover = turnover
-    contact.role = role
-    contact.save()
-
-
-def lead_create_without_landing(phone_number, name):
-    lead = Lead.objects.create(
-        name=name,
-        pipeline_id=int(voronka_id),
-    )
-    contact = Contact.objects.get(query=name)
-    # print(name)
-    lead.contacts.add(contact)
-    lead.save()
-
-
-# leads = Lead.objects.create(
-#     name="Новая сделка 111",
-#     price=500,
-#     pipeline_id=voronka_id,
-# )
-# c = Contact.objects.get(query="+998999999990")
-# leads.contacts.add(c)
-# leads.save()
-
-# contact = Contact.objects.get(query="+998999909999")
-# print(contact)
-
+)
 
 headers = {
     "Authorization": f"Bearer {amocrm_token}",
@@ -76,11 +21,10 @@ headers = {
 }
 
 
-def create_lead(full_name: str, number):
+# ✅ АСИНХРОННАЯ ВЕРСИЯ create_lead
+async def create_lead(full_name: str, number: str):
+    """Создание контакта и лида через API"""
     con_url = "https://uzbekistangroup2024.amocrm.ru/api/v4/contacts"
-    con_params = {
-
-    }
 
     data = [
         {
@@ -98,28 +42,36 @@ def create_lead(full_name: str, number):
         }
     ]
 
-    response = requests.post(con_url, headers=headers, data=json.dumps(data))
-    # print(response.status_code)
-    data = response.json()
-    # print(data)
-    con_id = data['_embedded']['contacts'][0]['id']
+    try:
+        # Создаем контакт
+        response = await http_client.post(con_url, headers=headers, json=data)
+        response.raise_for_status()
+        contact_data = response.json()
+        con_id = contact_data['_embedded']['contacts'][0]['id']
 
-    url = "https://uzbekistangroup2024.amocrm.ru/api/v4/leads"
-    lead_data = [
-        {
-            "name": full_name,
-            "pipeline_id": 9287082,
-            "_embedded": {"contacts": [{"id": con_id}]}
-        }
-    ]
+        # Создаем лид
+        url = "https://uzbekistangroup2024.amocrm.ru/api/v4/leads"
+        lead_data = [
+            {
+                "name": full_name,
+                "pipeline_id": PIPELINE_ID,
+                "_embedded": {"contacts": [{"id": con_id}]}
+            }
+        ]
 
-    response = requests.post(url, headers=headers, data=json.dumps(lead_data))
-    # print(response.status_code)
+        lead_response = await http_client.post(url, headers=headers, json=lead_data)
+        lead_response.raise_for_status()
 
-    return data['_embedded']['contacts'][0]['id']
+        return con_id
+
+    except httpx.HTTPError as e:
+        print(f"❌ Ошибка create_lead: {e}")
+        return None
 
 
-def contact_new_data(contact_id, num_emploeyes, turnover, role):
+# ✅ АСИНХРОННАЯ ВЕРСИЯ contact_new_data
+async def contact_new_data(contact_id: int, num_emploeyes: str, turnover: str, role: str):
+    """Обновление данных контакта"""
     url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
 
     data = {
@@ -151,8 +103,40 @@ def contact_new_data(contact_id, num_emploeyes, turnover, role):
         ]
     }
 
-    response = requests.patch(url, headers=headers, data=json.dumps(data))
+    try:
+        response = await http_client.patch(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
 
-    # print(response.status_code)
-    # print(response.json())
+    except httpx.HTTPError as e:
+        print(f"❌ Ошибка contact_new_data: {e}")
+        return None
 
+
+# ✅ АСИНХРОННАЯ ВЕРСИЯ get_lead
+async def get_lead(number: str):
+    """Получение лида по номеру телефона"""
+    contact_url = "https://uzbekistangroup2024.amocrm.ru/api/v4/contacts"
+
+    contact_params = {
+        'query': number,
+        'with': "leads"
+    }
+
+    try:
+        response = await http_client.get(contact_url, headers=headers, params=contact_params)
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.HTTPError as e:
+        print(f"❌ Ошибка get_lead: {e}")
+        return None
+
+
+# ✅ Функция для закрытия клиента при выключении бота
+async def close_http_client():
+    """Закрываем httpx клиент"""
+    await http_client.aclose()
+
+
+# asyncio.run(get_lead("958300800"))

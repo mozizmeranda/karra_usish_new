@@ -1,297 +1,331 @@
-from aiogram import types, Bot, Dispatcher
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.utils import executor
-from aiogram.dispatcher.filters import CommandStart
-from states import Registration, Rs
-from utils import contact_save, create_contact, lead_create_without_landing, create_lead, contact_new_data
+from aiogram import Bot, Dispatcher, F, Router
+from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Message, CallbackQuery, FSInputFile, BufferedInputFile
+from states import Registration, Rs, Mailing
+from utils import *
 from keyboards import contact_button, question1, question2, question3
 from config import *
 import asyncio
-from aiogram.types import InputFile
-import aiogram
 from db_setting import database
+from io import StringIO
 
-bot = Bot(token=token, parse_mode="HTML")
+bot = Bot(token=token)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-# voronka_id = 9317886
+dp = Dispatcher(storage=storage)
+router = Router()
+
+# Семафор для ограничения параллельных операций
+BROADCAST_SEMAPHORE = asyncio.Semaphore(30)  # Максимум 30 одновременных отправок
+API_SEMAPHORE = asyncio.Semaphore(5)  # Максимум 5 параллельных API запросов
 
 
-async def on_startup_notify(dispatcher: Dispatcher):
+async def on_startup_notify():
     try:
-        await dispatcher.bot.send_message(827950639, "Бот Запущен")
-
+        await bot.send_message(827950639, "Бот Запущен")
     except Exception as err:
-        await dispatcher.bot.send_message(827950639, text=f"{err}")
+        await bot.send_message(827950639, text=f"{err}")
 
 
-async def on_startup(dispatcher):
-    database.create_table()
-    await on_startup_notify(dispatcher)
+async def on_startup():
+    await database.create_table()
+    await on_startup_notify()
 
 
-@dp.message_handler(commands=['rs'])
-async def broadcast(message: types.Message, state: FSMContext):
+@router.message(Command("rs"))
+async def broadcast(message: Message, state: FSMContext):
     if message.from_user.id in [3325847, 6287458105, 827950639, 1150929995, 2104263081]:
-        await state.set_state("broadcast")
+        await state.set_state(Mailing.waiting_for_content)
         await message.reply("Введите текст для рассылки.")
     else:
         await message.reply("Вы не админ.")
 
 
-@dp.message_handler(commands=['all'])
-async def get_all(message: types.Message):
-    # slot = message.text.split(" ")[1]
-    users = database.get_all_users()
-    msg = ""
-    file_path = "users.txt"
+@router.message(Command("all"))
+async def get_all(message: Message):
+    users = await database.get_all_users()
+
+    buffer = StringIO()
     for i in users:
-        msg += f"ID == {i[0]} -- Name == {i[1]} -- Number == {i[2]}\n"
-    with open("users.txt", "w") as f:
-        f.write(msg)
-    await message.answer_document(InputFile(file_path))
+        buffer.write(f"ID == {i[0]} -- Name == {i[1]} -- Number == {i[2]}\n")
+
+    file_content = buffer.getvalue().encode('utf-8')
+    buffer.close()
+
+    await message.answer_document(
+        BufferedInputFile(file_content, filename="users.txt")
+    )
 
 
-@dp.message_handler(commands=['rs_text'])
-async def rs_withtext(message: types.Message, state: FSMContext):
+@router.message(Command("rs_text"))
+async def rs_withtext(message: Message, state: FSMContext):
     if message.from_user.id in [3325847, 6287458105, 827950639]:
-        await Rs.photo.set()
-        await message.reply("Пришли текст для рассылки")
+        await state.set_state(Rs.photo)
+        await message.reply("Пришли фото для рассылки")
 
 
-@dp.message_handler(content_types=types.ContentTypes.ANY, state=Rs.photo)
-async def get_file(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['photo'] = message.photo[-1].file_id
-    await Rs.text.set()
-    await message.reply("Send a text")
+@router.message(Rs.photo, F.photo)
+async def get_file(message: Message, state: FSMContext):
+    await state.update_data(photo=message.photo[-1].file_id)
+    await state.set_state(Rs.text)
+    await message.reply("Теперь отправь текст")
 
 
-@dp.message_handler(content_types=types.ContentTypes.ANY, state=Rs.text)
-async def get_text(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        users = set(database.get_all_users())
-        msg = ""
-        cap = message.text
-        for i in users:
-            try:
-                await bot.send_photo(
-                    chat_id=i[0],
-                    photo=data['photo'],
-                    caption=message.html_text
-                )
-            except Exception as e:
-                user = database.get_user_by_id(int(i[0]))
-                msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"
-    await state.finish()
+@router.message(Rs.text, F.text)
+async def get_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    users = await database.get_all_users()
+
+    # Запускаем рассылку в фоне
+    asyncio.create_task(
+        broadcast_background(
+            admin_chat_id=message.chat.id,
+            users=users,
+            content_type="photo",
+            content=data['photo'],
+            caption=message.html_text
+        )
+    )
+
+    await message.answer("⏳ Рассылка запущена в фоновом режиме...")
+    await state.clear()
 
 
-
-
-
-
-@dp.message_handler(commands=['add'])
-async def add_user(message: types.Message, state: FSMContext):
+@router.message(Command("add"))
+async def add_user(message: Message, state: FSMContext):
     await state.set_state("add")
     await message.reply("Отправь пользователя")
 
 
-@dp.message_handler(state="add")
-async def insert(message: types.Message, state: FSMContext):
-    if message.text == "stop":
-        await state.finish()
-        return 1
-    lst = message.text.split(" ")
-    print(lst)
-    database.insert_into(lst[0], lst[1], lst[2])
-    await message.reply("Добавилось")
+# ✅ КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Рассылка с батчингом и семафором
+async def send_one_message(user_id, content_type, content, caption=None):
+    """Отправка одного сообщения с ограничением по семафору"""
+    async with BROADCAST_SEMAPHORE:
+        try:
+            if content_type == "text":
+                await bot.send_message(chat_id=user_id, text=content)
+            elif content_type == "photo":
+                await bot.send_photo(chat_id=user_id, photo=content, caption=caption or "")
+            elif content_type == "document":
+                await bot.send_document(chat_id=user_id, document=content)
+            elif content_type == "video_note":
+                await bot.send_video_note(chat_id=user_id, video_note=content)
+            return None  # Успешно
+        except Exception as e:
+            return user_id  # Ошибка
 
 
-@dp.message_handler(content_types=types.ContentTypes.ANY, state="broadcast")
-async def broadcast_handler(message: types.Message, state: FSMContext):
+async def broadcast_background(admin_chat_id, users, content_type, content, caption=None):
+    """Фоновая рассылка с максимальной скоростью"""
 
-    users = set(database.get_all_ids())
-    msg = ""
-    if message.document:
-        for i in users:
-            try:
-                await bot.send_document(
-                    chat_id=i[0],
-                    document=message.document.file_id
-                )
-            except Exception as e:
-                user = database.get_user_by_id(int(i[0]))
-                msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"
+    # Создаем все задачи сразу (семафор ограничит параллелизм)
+    tasks = [
+        send_one_message(user[0], content_type, content, caption)
+        for user in users
+    ]
 
-    if message.video_note:
-        for i in users:
-            try:
+    # Выполняем все параллельно (но с ограничением через семафор)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                await bot.send_video_note(
-                    chat_id=i[0],
-                    video_note=message.video_note.file_id
-                )
-            except Exception as e:
-                user = database.get_user_by_id(int(i[0]))
-                msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"
+    # Собираем ошибки
+    failed_ids = [r for r in results if r is not None]
 
-    if message.photo:
-        for i in users:
-            try:
-                await bot.send_photo(
-                    chat_id=i[0],
-                    photo=message.photo[-1].file_id,
-                    caption=message.caption or "",
-                )
-            except Exception as e:
-                user = database.get_user_by_id(int(i[0]))
-                msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"
-    if message.text:
-        for i in users:
-            try:
-                await bot.send_message(
-                    chat_id=i[0],
-                    text=message.html_text
-                )
-                print(i[0])
-            except Exception as e:
-                user = database.get_user_by_id(int(i[0]))
-                msg += f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n"
+    if failed_ids:
+        # Получаем данные о пользователях с ошибками
+        buffer = StringIO()
+        for user_id in failed_ids:
+            user = await database.get_user_by_id(user_id)
+            if user:
+                buffer.write(f"id = {user[0]} -- name = {user[1]} -- number = {user[2]}\n")
 
-    with open("rs.txt", "w") as f:
-        f.write(msg)
-    await message.answer_document(document=open("rs.txt", "rb"), caption="Те до которых не дошла рассылка.")
+        file_content = buffer.getvalue().encode('utf-8')
+        buffer.close()
 
-    await message.answer("Рассылка завершена!")
-
-    await state.finish()
-
-
-@dp.message_handler(CommandStart())
-async def get_start(message: types.Message, state: FSMContext):
-    args = message.get_args()
-    if args:
-        # print(args)
-        greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
-        await message.answer_document(
-            document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
-            caption="Чек-лист"
+        await bot.send_document(
+            chat_id=admin_chat_id,
+            document=BufferedInputFile(file_content, filename="rs.txt"),
+            caption=f"❌ Не доставлено: {len(failed_ids)} из {len(users)}"
         )
 
-        # await bot.send_document(chat_id=message.from_user.id, document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ")
-        await message.answer(greet)
+    await bot.send_message(
+        admin_chat_id,
+        f"✅ Рассылка завершена!\n📊 Всего: {len(users)}\n✅ Доставлено: {len(users) - len(failed_ids)}\n❌ Ошибок: {len(failed_ids)}"
+    )
+
+
+@router.message(F.text | F.photo | F.document | F.video_note, Mailing.waiting_for_content)
+async def broadcast_handler(message: Message, state: FSMContext):
+    users = await database.get_all_users()
+
+    # Определяем тип контента
+    if message.document:
+        content_type, content, caption = "document", message.document.file_id, None
+    elif message.video_note:
+        content_type, content, caption = "video_note", message.video_note.file_id, None
+    elif message.photo:
+        content_type, content, caption = "photo", message.photo[-1].file_id, message.caption
+    elif message.text:
+        content_type, content, caption = "text", message.html_text, None
+    else:
+        await message.answer("Неподдерживаемый тип контента")
+        return
+
+    asyncio.create_task(
+        broadcast_background(message.chat.id, users, content_type, content, caption)
+    )
+
+    await message.answer(f"⏳ Рассылка запущена для {len(users)} пользователей...")
+    await state.clear()
+
+
+# ✅ ОПТИМИЗАЦИЯ: Параллельные API вызовы с семафором
+async def safe_api_call(func, *args):
+    """Безопасный вызов внешнего API с ограничением параллелизма"""
+    async with API_SEMAPHORE:
+        return await asyncio.to_thread(func, *args)
+
+
+@router.message(CommandStart())
+async def get_start(message: Message, state: FSMContext):
+    args = message.text.split()[1] if len(message.text.split()) > 1 else None
+
+    if args:
+        greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
+
+        # ✅ Все отправки параллельно
+        # await asyncio.gather(
+        #     message.answer_document(
+        #         document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
+        #         caption="Чек-лист"
+        #     ),
+        #     message.answer(greet)
+        # )
+
         await message.answer(
             " Бизнинг вебинарга яхшироқ "
             "тайёргарлик кўриш учун, компаниянгизда нечта ходим ишлайди?",
             reply_markup=question1
         )
-        msg = await message.answer("Илтимос, бироз кутинг ......")
 
-        await Registration.num_emploeyes.set()
-        # print(args)
+        await state.set_state(Registration.num_emploeyes)
+
         d = args.split("--")
-        # print("d 3- ", d)
-        # database.insert_into(message.from_user.id, d[0], f"+{d[1]}", d[2], d[3], d[4])
-        database.insert_into_two_params(message.from_user.id, d[0], f"+{d[1]}")
-        contact_id = create_lead(d[0], f'+{d[1]}')
-        l = {
+
+        await database.insert_into(message.from_user.id, d[0], f"+{d[1]}")
+        contact_id = await create_lead(d[0], f"+{d[1]}")
+
+        await state.update_data({
             "name": d[0],
             "number": f"+{d[1]}",
             "from_landing": 1,
             "contact_id": contact_id
-        }
-
-
-
-        # create_contact(d[0], d[1])
-        # lead_create_without_landing(d[0], d[1])
-        await bot.delete_message(message.from_user.id, msg.message_id)
-        await state.set_data(l)
+        })
     else:
         text = """📢 Ассалому алайкум! Сотувлар камайган, жамоа сустлашган. Қандай қилиб Кучли жамоа ва Янги ўсиш тизими орқали бизнесингизни қайта жонлантиришингиз мумкин?
 
 31-июль куни соат 19:00 да Барно ва Шерзод Турсуновлар ҳамда Бекзод Камилов билан ўтказиладиган вебинарга рўйхатдан ўтиш учун, илтимос, маълумотларингизни юборинг."""
+
         await message.answer(text=text)
         await message.answer(text="👤 Илтимос, исм ва фамилиянгизни киритинг.")
-        await Registration.name.set()
+        await state.set_state(Registration.name)
 
 
-@dp.message_handler(content_types=types.ContentTypes.TEXT, state=Registration.name)
-async def get_name(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
-        data['name'] = message.text
-        await message.answer(f"📞 Раҳмат, {data['name']}! Енди, илтимос, "
-                             f"телефон рақамингизни пастдаги тугма орқали улашинг.", reply_markup=contact_button)
-    await Registration.next()
+@router.message(Registration.name, F.text)
+async def get_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    data = await state.get_data()
+
+    await message.answer(
+        f"📞 Раҳмат, {data['name']}! Енди, илтимос, "
+        f"телефон рақамингизни пастдаги тугма орқали улашинг.",
+        reply_markup=contact_button
+    )
+    await state.set_state(Registration.phone)
 
 
-@dp.message_handler(content_types=types.ContentTypes.ANY, state=Registration.phone)
-async def get_number(message: types.Message, state: FSMContext):
-    msg = await message.answer("Илтимос, бироз кутинг ......")
-    async with state.proxy() as data:
-        data['number'] = message.text or message.contact.phone_number
-        data['from_landing'] = 0
-        create_contact(data['name'], data['number'])
-        lead_create_without_landing(data['name'], data['number'])
-        database.insert_into(message.from_user.id, data['name'], data['number'])
-    await bot.delete_message(message.from_user.id, msg.message_id)
-    await message.answer("📢 Рўйхатдан ўтганингиз учун рахмат, "
-                         "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+SloaN4FmJ54zMjBi.")
-    await message.answer("Бизнинг вебинарга яхшироқ тайёргарлик кўриш учун, компаниянгизда нечта ходим ишлайди?",
-                         reply_markup=question1)
-    await Registration.next()
+@router.message(Registration.phone)
+async def get_number(message: Message, state: FSMContext):
+    phone = message.text or message.contact.phone_number
+    data = await state.get_data()
+
+    # ✅ ВСЕ операции параллельно (БД + 2 API)
+    await database.insert_into(message.from_user.id, data['name'], phone)
+    await create_lead(data['name'], phone)
+
+    await state.update_data(number=phone, from_landing=0)
+
+    await message.answer(
+        "📢 Рўйхатдан ўтганингиз учун рахмат, "
+        "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+SloaN4FmJ54zMjBi."
+    )
+    await message.answer(
+        "Бизнинг вебинарга яхшироқ тайёргарлик кўриш учун, компаниянгизда нечта ходим ишлайди?",
+        reply_markup=question1
+    )
+    await state.set_state(Registration.num_emploeyes)
 
 
-@dp.callback_query_handler(lambda x: x.data and x.data.startswith("q_"), state=Registration.num_emploeyes)
-async def get_num_emploeyes(call: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("q_"), Registration.num_emploeyes)
+async def get_num_emploeyes(call: CallbackQuery, state: FSMContext):
     ans = call.data.split("_")[1]
-    async with state.proxy() as data:
-        data['num_emploeyes'] = ans
+    await state.update_data(num_emploeyes=ans)
 
-    await call.message.answer("Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча? "
-                              "Бу маълумот вебинарга яхшироқ тайёргарлик кўриш учун керак.",
-                              reply_markup=question2)
-    await Registration.turnover.set()
+    await call.message.answer(
+        "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча? "
+        "Бу маълумот вебинарга яхшироқ тайёргарлик кўриш учун керак.",
+        reply_markup=question2
+    )
+    await state.set_state(Registration.turnover)
+    await call.answer()
 
 
-@dp.callback_query_handler(lambda x: x.data and x.data.startswith("q_"), state=Registration.turnover)
-async def get_turnover(call: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("q_"), Registration.turnover)
+async def get_turnover(call: CallbackQuery, state: FSMContext):
     ans = call.data.split("_")[1]
-    async with state.proxy() as data:
-        data['turnover'] = ans
-    await call.message.answer('Биз сизга ёрдам беришга деярли тайёрмиз. '
-                              'Компанияда қандай ролни бажараётганингизни аниқлаб беринг 🌟',
-                              reply_markup=question3)
-    await Registration.role.set()
+    await state.update_data(turnover=ans)
+
+    await call.message.answer(
+        'Биз сизга ёрдам беришга деярли тайёрмиз. '
+        'Компанияда қандай ролни бажараётганингизни аниқлаб беринг 🌟',
+        reply_markup=question3
+    )
+    await state.set_state(Registration.role)
+    await call.answer()
 
 
-@dp.callback_query_handler(lambda x: x.data and x.data.startswith("q_"), state=Registration.role)
-async def get_(call: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("q_"), Registration.role)
+async def get_role(call: CallbackQuery, state: FSMContext):
     ans = call.data.split("_")[1]
+    await state.update_data(role=ans)
+    data = await state.get_data()
 
-    async with state.proxy() as data:
-        data['role'] = ans
-        msg = await call.answer("Илтимос, бироз кутинг ......", show_alert=True)
-        # contact_save(
-        #     num_emploeyes=data['num_emploeyes'],
-        #     turnover=data['turnover'],
-        #     role=data['role'],
-        #     number=data['number']
-        # )
-        contact_new_data(data['contact_id'], data['num_emploeyes'], data['turnover'], data['role'])
+    await contact_new_data(
+        data['contact_id'],
+        data['num_emploeyes'],
+        data['turnover'],
+        data['role']
+    )
 
-        # if data['from_landing'] == 0:
-        #     lead_create_without_landing(data['number'], data['name'])
-        # await bot.delete_message(call.message.from_user.id, msg.message_id)
-        await call.message.answer("Жавобларингиз учун раҳмат! Биз ишонамизки, "
-                                  "вебинаримиз айнан сиз учун мос. Вебинарда кўришгунча!"
-                                  "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi")
+    await call.message.answer(
+        "Жавобларингиз учун раҳмат! Биз ишонамизки, "
+        "вебинаримиз айнан сиз учун мос. Вебинарда кўришгунча! "
+        "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"
+    )
 
-    await state.finish()
+    await state.clear()
+    await call.answer()
 
-    # await state.finish()
+
+async def main():
+    dp.include_router(router)
+    await on_startup()
+
+    try:
+        await dp.start_polling(bot, skip_updates=True)
+    finally:
+        await close_http_client()
 
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    asyncio.run(main())

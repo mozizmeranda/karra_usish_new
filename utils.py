@@ -1,9 +1,30 @@
 from config import *
+import requests
 import httpx
-import asyncio
+import json
+import traceback
 
 
-PIPELINE_ID = 10578617
+def notify_admin(function_name: str, message_error: str, **kwargs):
+    try:
+
+        json_data = json.dumps(kwargs, ensure_ascii=False, separators=(',\n', ':'))
+
+        text = (f"Function:\n ```function\n{function_name}```\n\nError:\n```Error\n{message_error}``` \n "
+                f"\nParams:```json\n{json_data}```")
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            'chat_id': 827950639,
+            'text': text,
+            'parse_mode': 'MarkdownV2'
+        }
+
+        requests.post(url, data=payload)
+
+    except Exception as exp:
+        print("Notify_admin_error: ", exp)
+
 
 # ✅ Создаем единый httpx клиент
 http_client = httpx.AsyncClient(
@@ -11,7 +32,7 @@ http_client = httpx.AsyncClient(
     limits=httpx.Limits(
         max_keepalive_connections=50,
         max_connections=100,
-        keepalive_expiry=30
+        keepalive_expiry=20
     )
 )
 
@@ -66,10 +87,10 @@ async def create_lead(full_name: str, number: str):
 
     except httpx.HTTPError as e:
         print(f"❌ Ошибка create_lead: {e}")
+        notify_admin(create_lead.__name__, str(e), full_name=full_name, number=number)
         return None
 
 
-# ✅ АСИНХРОННАЯ ВЕРСИЯ contact_new_data
 async def contact_new_data(contact_id: int, num_emploeyes: str, turnover: str, role: str):
     """Обновление данных контакта"""
     url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
@@ -110,6 +131,8 @@ async def contact_new_data(contact_id: int, num_emploeyes: str, turnover: str, r
 
     except httpx.HTTPError as e:
         print(f"❌ Ошибка contact_new_data: {e}")
+        notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
+                     num_emploeyes=num_emploeyes, turnover=turnover, role=role)
         return None
 
 
@@ -130,6 +153,7 @@ async def get_lead(number: str):
 
     except httpx.HTTPError as e:
         print(f"❌ Ошибка get_lead: {e}")
+        notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), number=number)
         return None
 
 

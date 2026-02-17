@@ -299,7 +299,7 @@ async def get_role(call: CallbackQuery, state: FSMContext):
     ans = call.data.split("_")[1]
     await state.update_data(role=ans)
     data = await state.get_data()
-
+    await call.answer("Илтимос озгина кутинг....")
     await contact_new_data(
         data['contact_id'],
         data['num_emploeyes'],

@@ -58,70 +58,36 @@ async def get_all(message: Message):
     )
 
 
-@router.message(Command("rs_text"))
-async def rs_withtext(message: Message, state: FSMContext):
-    if message.from_user.id in [3325847, 6287458105, 827950639]:
-        await state.set_state(Rs.photo)
-        await message.reply("Пришли фото для рассылки")
-
-
-@router.message(Rs.photo, F.photo)
-async def get_file(message: Message, state: FSMContext):
-    await state.update_data(photo=message.photo[-1].file_id)
-    await state.set_state(Rs.text)
-    await message.reply("Теперь отправь текст")
-
-
-@router.message(Rs.text, F.text)
-async def get_text(message: Message, state: FSMContext):
-    data = await state.get_data()
-    users = await database.get_all_users()
-
-    # Запускаем рассылку в фоне
-    asyncio.create_task(
-        broadcast_background(
-            admin_chat_id=message.chat.id,
-            users=users,
-            content_type="photo",
-            content=data['photo'],
-            caption=message.html_text
-        )
-    )
-
-    await message.answer("⏳ Рассылка запущена в фоновом режиме...")
-    await state.clear()
-
-
-@router.message(Command("add"))
-async def add_user(message: Message, state: FSMContext):
-    await state.set_state("add")
-    await message.reply("Отправь пользователя")
-
-
 # ✅ КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Рассылка с батчингом и семафором
-async def send_one_message(user_id, content_type, content, caption=None):
+async def send_one_message(user_id, content_type, content, enteties, caption=None):
     """Отправка одного сообщения с ограничением по семафору"""
     async with BROADCAST_SEMAPHORE:
         try:
             if content_type == "text":
-                await bot.send_message(chat_id=user_id, text=content)
+                await bot.send_message(chat_id=user_id, text=content, parse_mode="MarkdownV2", entities=enteties)
             elif content_type == "photo":
-                await bot.send_photo(chat_id=user_id, photo=content, caption=caption or "")
+                await bot.send_photo(chat_id=user_id, photo=content, caption=caption or "", caption_entities=enteties)
             elif content_type == "document":
-                await bot.send_document(chat_id=user_id, document=content)
+                await bot.send_document(chat_id=user_id, document=content, caption=caption, caption_entities=enteties)
             elif content_type == "video_note":
                 await bot.send_video_note(chat_id=user_id, video_note=content)
             return None  # Успешно
         except Exception as e:
+            notify_admin(
+                function_name=notify_admin.__name__,
+                message_error=str(e),
+                user_id=user_id,
+                traceback=traceback.format_exc()
+            )
             return user_id  # Ошибка
 
 
-async def broadcast_background(admin_chat_id, users, content_type, content, caption=None):
+async def broadcast_background(admin_chat_id, users, content_type, content, enteties, caption=None):
     """Фоновая рассылка с максимальной скоростью"""
 
     # Создаем все задачи сразу (семафор ограничит параллелизм)
     tasks = [
-        send_one_message(user[0], content_type, content, caption)
+        send_one_message(user[0], content_type, content, enteties, caption)
         for user in users
     ]
 
@@ -160,19 +126,19 @@ async def broadcast_handler(message: Message, state: FSMContext):
 
     # Определяем тип контента
     if message.document:
-        content_type, content, caption = "document", message.document.file_id, None
+        content_type, content, caption, entities = "document", message.document.file_id, None, message.caption_entities
     elif message.video_note:
-        content_type, content, caption = "video_note", message.video_note.file_id, None
+        content_type, content, enteties, caption = "video_note", message.video_note.file_id, None, None
     elif message.photo:
-        content_type, content, caption = "photo", message.photo[-1].file_id, message.caption
+        content_type, content, caption, entities = "photo", message.photo[-1].file_id, message.caption, message.caption_entities
     elif message.text:
-        content_type, content, caption = "text", message.html_text, None
+        content_type, content, caption, enteties = "text", message.text, None, message.entities
     else:
         await message.answer("Неподдерживаемый тип контента")
         return
 
     asyncio.create_task(
-        broadcast_background(message.chat.id, users, content_type, content, caption)
+        broadcast_background(message.chat.id, users, content_type, content, entities, caption)
     )
 
     await message.answer(f"⏳ Рассылка запущена для {len(users)} пользователей...")
@@ -191,7 +157,13 @@ async def get_start(message: Message, state: FSMContext):
     args = message.text.split()[1] if len(message.text.split()) > 1 else None
 
     if args:
-        greet = """📢 Рўйхатдан ўтганингиз учун рахмат! Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"""
+        greet = """Ўзбекистон бозори сиз ўйлагандан ҳам тезроқ ўзгаряпти. Бугун бизнесида тизим қуришга улгурмаганлар, эртага кучли ўйинчилар билан рақобатга тайёр бўлолмай қолади.
+
+Айнан шунинг учун биз "Барқарор бизнесга 5 қадам" реалити лойиҳасини бошлаяпмиз.
+
+Ичида — айланмаси юз миллионлаб долларга етган бизнесларда шахсан ўзимиз қўллаг синовлардан ўтган 5 та инструмент бор. Улар сизга бизнесингизда тизим қуриш, рақобатбардош бўлиш ва бозорда нима бўлишидан қатъи назар, ишонч билан ҳаракат қилишга ёрдам беради.
+
+Каналга қўшилиш учун қуйидаги қисқа саволларга жавоб беринг 👇"""
 
         # ✅ Все отправки параллельно
         # await asyncio.gather(
@@ -201,14 +173,13 @@ async def get_start(message: Message, state: FSMContext):
         #     ),
         #     message.answer(greet)
         # )
-
+        await message.answer(greet)
         await message.answer(
-            " Бизнинг вебинарга яхшироқ "
-            "тайёргарлик кўриш учун, компаниянгизда нечта ходим ишлайди?",
-            reply_markup=question1
+            "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча?",
+            reply_markup=question2
         )
 
-        await state.set_state(Registration.num_emploeyes)
+        await state.set_state(Registration.turnover)
 
         d = args.split("--")
 
@@ -302,16 +273,34 @@ async def get_role(call: CallbackQuery, state: FSMContext):
     await call.answer("Илтимос озгина кутинг....")
     await contact_new_data(
         data['contact_id'],
-        data['num_emploeyes'],
         data['turnover'],
         data['role']
     )
 
-    await call.message.answer(
-        "Жавобларингиз учун раҳмат! Биз ишонамизки, "
-        "вебинаримиз айнан сиз учун мос. Вебинарда кўришгунча! "
-        "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+3u2_R1E7JcE1MzFi"
-    )
+    msg = """Жавобларингиз учун раҳмат!
+
+Энди энг муҳим босқич бошланади.
+
+Барча жараёнлар, жонли эфирлар ва амалий иш жараёнлари
+«Кучли бизнес» каналида давом этади.
+
+Бу ерда биз:
+
+— Барқарор ўсишнинг 5 та асосини очиб берамиз
+— Уларни ўз бизнесимизда қандай қўллаётганимизни кўрсатамиз
+— Шерзод Турсунов билан жонли эфирлар ўтказамиз
+— Барно Турсунова билан алоҳида стратегик эфирлар қиламиз
+— Қарорлар, хатолар ва натижаларни яширмаймиз
+
+Бу назария эмас.
+Бу — реал бизнес.
+Ҳаммаси очиқ. Ҳаммаси ичкаридан.
+
+Агарда кучли бизнес қуришни истасангиз, каналга қўшилинг:
+
+👉 https://t.me/+otDpW2c34tI1NTQy"""
+
+    await call.message.answer(msg)
 
     await state.clear()
     await call.answer()

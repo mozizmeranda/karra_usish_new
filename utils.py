@@ -76,7 +76,10 @@ async def create_lead(full_name: str, number: str):
             {
                 "name": full_name,
                 "pipeline_id": PIPELINE_ID,
-                "_embedded": {"contacts": [{"id": con_id}]}
+                "_embedded": {
+                    "contacts": [{"id": con_id}],
+                    "tags": [{"name": "lending"}]
+                }
             }
         ]
 
@@ -91,7 +94,7 @@ async def create_lead(full_name: str, number: str):
         return None
 
 
-async def contact_new_data(contact_id: int, num_emploeyes: str, turnover: str, role: str):
+async def contact_new_data(contact_id: int, turnover: str, role: str):
     """Обновление данных контакта"""
     url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
 
@@ -110,14 +113,6 @@ async def contact_new_data(contact_id: int, num_emploeyes: str, turnover: str, r
                 "values": [
                     {
                         "value": turnover
-                    }
-                ]
-            },
-            {
-                "field_id": 950551,  # поле "рабочие"
-                "values": [
-                    {
-                        "value": num_emploeyes
                     }
                 ]
             }

@@ -165,14 +165,11 @@ async def get_start(message: Message, state: FSMContext):
 
 Каналга қўшилиш учун қуйидаги қисқа саволларга жавоб беринг 👇"""
 
-        # ✅ Все отправки параллельно
-        # await asyncio.gather(
-        #     message.answer_document(
-        #         document="BQACAgIAAxkDAAIjTGjDuGP3F5b6Dx5K5cCjG-TgkxE8AAKjcAACOcMhStd_qMZXLyqeNgQ",
-        #         caption="Чек-лист"
-        #     ),
-        #     message.answer(greet)
-        # )
+        if message.from_user.username:
+            username = message.from_user.username
+        else:
+            username = "Отсутствует"
+
         await message.answer(greet)
         await message.answer(
             "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча?",
@@ -184,7 +181,7 @@ async def get_start(message: Message, state: FSMContext):
         d = args.split("--")
 
         await database.insert_into(message.from_user.id, d[0], f"+{d[1]}")
-        contact_id = await create_lead(d[0], f"+{d[1]}")
+        contact_id = await create_lead(d[0], f"+{d[1]}", username)
 
         await state.update_data({
             "name": d[0],
@@ -222,7 +219,8 @@ async def get_number(message: Message, state: FSMContext):
 
     # ✅ ВСЕ операции параллельно (БД + 2 API)
     await database.insert_into(message.from_user.id, data['name'], phone)
-    await create_lead(data['name'], phone)
+    username = message.from_user.username or "Отсутсвует"
+    await create_lead(data['name'], phone, username)
 
     await state.update_data(number=phone, from_landing=0)
 

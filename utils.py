@@ -43,7 +43,7 @@ headers = {
 
 
 # ✅ АСИНХРОННАЯ ВЕРСИЯ create_lead
-async def create_lead(full_name: str, number: str):
+async def create_lead(full_name: str, number: str, username: str):
     """Создание контакта и лида через API"""
     con_url = "https://uzbekistangroup2024.amocrm.ru/api/v4/contacts"
 
@@ -56,6 +56,14 @@ async def create_lead(full_name: str, number: str):
                     "values": [
                         {
                             "value": number,
+                        }
+                    ]
+                },
+                {
+                    "field_id": 949583,
+                    "values": [
+                        {
+                            "value": username,
                         }
                     ]
                 }

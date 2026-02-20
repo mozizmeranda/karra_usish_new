@@ -41,6 +41,12 @@ async def on_shutdown():
     await database.close()
 
 
+@dp.message(Command("checkpoint"))
+async def cmd_checkpoint(message: Message):
+    await database.checkpoint()
+    await message.answer("Готово, можно скачивать")
+
+
 @router.message(Command("rs"))
 async def broadcast(message: Message, state: FSMContext):
     if message.from_user.id in [3325847, 6287458105, 827950639, 1150929995, 2104263081]:

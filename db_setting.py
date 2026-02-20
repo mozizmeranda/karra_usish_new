@@ -73,6 +73,10 @@ class Database:
         sql = "DELETE FROM Users WHERE id=?"
         await self.execute(sql, (telegram_id,), commit=True)
 
+    async def checkpoint(self):
+        await self._connection.execute("PRAGMA wal_checkpoint(FULL)")
+        await self._connection.commit()
+
     # ----------------------------------   REMINDERS   ---------------------------------
     async def stop_reminders(self, telegram_id: int):
         sql = """

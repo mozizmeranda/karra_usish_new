@@ -102,7 +102,7 @@ async def create_lead(full_name: str, number: str, username: str):
         return None
 
 
-async def contact_new_data(contact_id: int, turnover: str, role: str):
+async def contact_new_data(contact_id: int, number_of_employes: str, turnover: str, role: str):
     """Обновление данных контакта"""
     url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
 
@@ -121,6 +121,14 @@ async def contact_new_data(contact_id: int, turnover: str, role: str):
                 "values": [
                     {
                         "value": turnover
+                    }
+                ]
+            },
+            {
+                "field_id": 950551,  # поле "рабочие"
+                "values": [
+                    {
+                        "value": number_of_employes
                     }
                 ]
             }

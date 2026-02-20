@@ -6,15 +6,18 @@ from aiogram.types import Message, CallbackQuery, FSInputFile, BufferedInputFile
 from states import Registration, Rs, Mailing
 from utils import *
 from keyboards import contact_button, question1, question2, question3
+from datetime import datetime, timedelta, timezone
 from config import *
 import asyncio
 from db_setting import database
+from zoneinfo import ZoneInfo
 from io import StringIO
 
 bot = Bot(token=token)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
+TASHKENT_TZ = ZoneInfo("Asia/Tashkent")
 
 # Семафор для ограничения параллельных операций
 BROADCAST_SEMAPHORE = asyncio.Semaphore(30)  # Максимум 30 одновременных отправок
@@ -29,8 +32,13 @@ async def on_startup_notify():
 
 
 async def on_startup():
+    await bot.send_message(827950639, text="Бот запущен")
+    await database.connect()
     await database.create_table()
-    await on_startup_notify()
+
+
+async def on_shutdown():
+    await database.close()
 
 
 @router.message(Command("rs"))
@@ -172,15 +180,26 @@ async def get_start(message: Message, state: FSMContext):
 
         await message.answer(greet)
         await message.answer(
-            "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча?",
-            reply_markup=question2
+            "Компаниянгизда нечта ходим ишлайди?",
+            reply_markup=question1
         )
+        now_tashkent = datetime.now(TASHKENT_TZ)
+        next_time = now_tashkent + timedelta(minutes=10)
+        next_time_str = next_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        await state.set_state(Registration.turnover)
+        await state.set_state(Registration.num_emploeyes)
 
         d = args.split("--")
 
-        await database.insert_into(message.from_user.id, d[0], f"+{d[1]}")
+        await database.insert_into(
+            telegram_id=message.from_user.id,
+            name=d[0],
+            number=f"+{d[1]}",
+            reminder_step=0,
+            next_reminder_at=next_time_str
+        )
+
+        # await database.insert_into(message.from_user.id, d[0], f"+{d[1]}")
         contact_id = await create_lead(d[0], f"+{d[1]}", username)
 
         await state.update_data({
@@ -241,8 +260,7 @@ async def get_num_emploeyes(call: CallbackQuery, state: FSMContext):
     await state.update_data(num_emploeyes=ans)
 
     await call.message.answer(
-        "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча? "
-        "Бу маълумот вебинарга яхшироқ тайёргарлик кўриш учун керак.",
+        "Раҳмат! Сизнинг компаниянгизнинг йиллик обороти қанча?",
         reply_markup=question2
     )
     await state.set_state(Registration.turnover)
@@ -271,9 +289,12 @@ async def get_role(call: CallbackQuery, state: FSMContext):
     await call.answer("Илтимос озгина кутинг....")
     await contact_new_data(
         data['contact_id'],
+        data['num_emploeyes'],
         data['turnover'],
         data['role']
     )
+
+    await database.stop_reminders(call.from_user.id)
 
     msg = """Жавобларингиз учун раҳмат!
 
@@ -306,7 +327,8 @@ async def get_role(call: CallbackQuery, state: FSMContext):
 
 async def main():
     dp.include_router(router)
-    await on_startup()
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
 
     try:
         await dp.start_polling(bot, skip_updates=True)

@@ -215,9 +215,18 @@ async def get_start(message: Message, state: FSMContext):
             "contact_id": contact_id
         })
     else:
-        text = """📢 Ассалому алайкум! Сотувлар камайган, жамоа сустлашган. Қандай қилиб Кучли жамоа ва Янги ўсиш тизими орқали бизнесингизни қайта жонлантиришингиз мумкин?
+        text = """Ассалому алайкум!
 
-31-июль куни соат 19:00 да Барно ва Шерзод Турсуновлар ҳамда Бекзод Камилов билан ўтказиладиган вебинарга рўйхатдан ўтиш учун, илтимос, маълумотларингизни юборинг."""
+Сиз “Барқарор бизнесга 5 қадам” реалити лойиҳасига қўшиляпсиз.
+
+Бу ерда сиз:
+— бизнесда тизим қуриш,
+— рақобатбардошликни ошириш,
+— бозор қандай ўзгаришидан қатъи назар барқарор ўсишни таъминлаш учун амалда синовдан ўтган 5 та инструментни оласиз.
+
+Барчаси реал бизнес тажрибасига асосланган.
+Аввало, танишиб олайлик.
+"""
 
         await message.answer(text=text)
         await message.answer(text="👤 Илтимос, исм ва фамилиянгизни киритинг.")
@@ -243,18 +252,46 @@ async def get_number(message: Message, state: FSMContext):
     data = await state.get_data()
 
     # ✅ ВСЕ операции параллельно (БД + 2 API)
-    await database.insert_into(message.from_user.id, data['name'], phone)
+    # await database.insert_into(message.from_user.id, data['name'], phone)
+    now_tashkent = datetime.now(TASHKENT_TZ)
+    next_time = now_tashkent + timedelta(minutes=10)
+    next_time_str = next_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    await database.insert_into(
+        telegram_id=message.from_user.id,
+        name=data['name'],
+        number=phone,
+        reminder_step=0,
+        next_reminder_at=next_time_str
+    )
     username = message.from_user.username or "Отсутсвует"
-    await create_lead(data['name'], phone, username)
+    # await create_lead(data['name'], phone, username)
+    contact_id = await create_lead(data['name'], phone, username)
+
+    await state.update_data({
+        "name": data['name'],
+        "number": phone,
+        "from_landing": 1,
+        "contact_id": contact_id
+    })
 
     await state.update_data(number=phone, from_landing=0)
 
     await message.answer(
-        "📢 Рўйхатдан ўтганингиз учун рахмат, "
-        "Муҳим маълумотларни йўқотиб қўймаслик учун, илтимос, бизнинг Telegram гуруҳимизга қўшилинг: 🔗 https://t.me/+SloaN4FmJ54zMjBi."
+        "📢 Рўйхатдан ўтганингиз учун рахмат. "
+    )
+    greet = """Ўзбекистон бозори сиз ўйлагандан ҳам тезроқ ўзгаряпти. Бугун бизнесида тизим қуришга улгурмаганлар, эртага кучли ўйинчилар билан рақобатга тайёр бўлолмай қолади.
+
+    Айнан шунинг учун биз "Барқарор бизнесга 5 қадам" реалити лойиҳасини бошлаяпмиз.
+
+    Ичида — айланмаси юз миллионлаб долларга етган бизнесларда шахсан ўзимиз қўллаг синовлардан ўтган 5 та инструмент бор. Улар сизга бизнесингизда тизим қуриш, рақобатбардош бўлиш ва бозорда нима бўлишидан қатъи назар, ишонч билан ҳаракат қилишга ёрдам беради.
+
+    Каналга қўшилиш учун қуйидаги қисқа саволларга жавоб беринг 👇"""
+    await message.answer(
+        greet
     )
     await message.answer(
-        "Бизнинг вебинарга яхшироқ тайёргарлик кўриш учун, компаниянгизда нечта ходим ишлайди?",
+        "Компаниянгизда нечта ходим ишлайди?",
         reply_markup=question1
     )
     await state.set_state(Registration.num_emploeyes)

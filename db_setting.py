@@ -15,7 +15,7 @@ class Database:
 
     async def close(self):
         if self._connection:
-            await self._connection.close()
+                await self._connection.close()
 
     async def execute(self, sql, parameters=None, fetchone=False, fetchall=False, commit=False):
         parameters = parameters or tuple()

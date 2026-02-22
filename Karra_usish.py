@@ -336,8 +336,9 @@ async def get_role(call: CallbackQuery, state: FSMContext):
     await state.update_data(role=ans)
     data = await state.get_data()
     await call.answer("Илтимос озгина кутинг....")
+    contact_id = await check_contact_id(contact_id=data['contact_id'], number=data['number'])
     await contact_new_data(
-        data['contact_id'],
+        contact_id,
         data['num_emploeyes'],
         data['turnover'],
         data['role']

@@ -3,6 +3,7 @@ import requests
 import httpx
 import json
 import traceback
+import asyncio
 
 
 def notify_admin(function_name: str, message_error: str, **kwargs):
@@ -142,7 +143,7 @@ async def contact_new_data(contact_id: int, number_of_employes: str, turnover: s
 
     except httpx.HTTPError as e:
         print(f"❌ Ошибка contact_new_data: {e}")
-        notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
+        notify_admin(contact_new_data.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
                      num_emploeyes=number_of_employes, turnover=turnover, role=role)
         return None
 
@@ -194,6 +195,49 @@ async def update_username(contact_id: str, username: str):
         print(f"❌ Ошибка contact_new_data: {e}")
         notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
                      username=username)
+
+
+async def get_contact_id_by_number(number):
+    url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts"
+    contact_id = None
+    payload = {
+        "query": number
+    }
+
+    try:
+        response = await http_client.get(url, params=payload, headers=headers)
+        data = response.json()
+
+        contacts = data.get("_embedded", {}).get("contacts", [])
+
+        if contacts:
+            latest = max(contacts, key=lambda c: c["created_at"])
+            contact_id = latest["id"]
+
+        return contact_id
+
+    except Exception as exp:
+        print(exp)
+        notify_admin(get_contact_id_by_number.__name__, str(exp), traceback=traceback.format_exc(), contact_id=number)
+
+
+async def check_contact_id(contact_id: int, number: str):
+    url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
+
+    try:
+        response = await http_client.get(url, headers=headers)
+
+        if response.status_code == 200:
+            return contact_id
+        else:
+            new_contact_id = await get_contact_id_by_number(number=number)
+            if new_contact_id:
+                return new_contact_id
+
+        return contact_id
+
+    except Exception as exp:
+        notify_admin(check_contact_id.__name__, str(exp), traceback=traceback.format_exc(), contact_id=contact_id)
 
 
 # ✅ Функция для закрытия клиента при выключении бота

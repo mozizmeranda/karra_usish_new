@@ -143,7 +143,7 @@ async def contact_new_data(contact_id: int, number_of_employes: str, turnover: s
     except httpx.HTTPError as e:
         print(f"❌ Ошибка contact_new_data: {e}")
         notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
-                     num_emploeyes=num_emploeyes, turnover=turnover, role=role)
+                     num_emploeyes=number_of_employes, turnover=turnover, role=role)
         return None
 
 
@@ -168,6 +168,34 @@ async def get_lead(number: str):
         return None
 
 
+async def update_username(contact_id: str, username: str):
+    """Обновление данных контакта"""
+    url = f"https://uzbekistangroup2024.amocrm.ru/api/v4/contacts/{contact_id}"
+
+    data = {
+        "custom_fields_values": [
+            {
+                "field_id": 949583,
+                "values": [
+                    {
+                        "value": username,
+                    }
+                ]
+            }
+        ]
+    }
+
+    try:
+        response = await http_client.patch(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.HTTPError as e:
+        print(f"❌ Ошибка contact_new_data: {e}")
+        notify_admin(create_lead.__name__, str(e), traceback=traceback.format_exc(), contact_id=contact_id,
+                     username=username)
+
+
 # ✅ Функция для закрытия клиента при выключении бота
 async def close_http_client():
     """Закрываем httpx клиент"""
@@ -175,3 +203,6 @@ async def close_http_client():
 
 
 # asyncio.run(get_lead("958300800"))
+
+
+

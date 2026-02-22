@@ -206,7 +206,12 @@ async def get_start(message: Message, state: FSMContext):
         )
 
         # await database.insert_into(message.from_user.id, d[0], f"+{d[1]}")
-        contact_id = await create_lead(d[0], f"+{d[1]}", username)
+        # contact_id = await create_lead(d[0], f"+{d[1]}", username)
+        if len(d) == 3:
+            contact_id = d[2]
+            await update_username(contact_id=contact_id, username=username)
+        else:
+            contact_id = await create_lead(d[0], f"+{d[1]}", username)
 
         await state.update_data({
             "name": d[0],
@@ -214,6 +219,7 @@ async def get_start(message: Message, state: FSMContext):
             "from_landing": 1,
             "contact_id": contact_id
         })
+
     else:
         text = """Ассалому алайкум!
 

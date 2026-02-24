@@ -11,10 +11,13 @@ from config import *
 import asyncio
 from db_setting import database
 from zoneinfo import ZoneInfo
+from aiogram_sqlite_storage.sqlitestore import SQLStorage
+
 from io import StringIO
 
 bot = Bot(token=token)
-storage = MemoryStorage()
+# storage = MemoryStorage()
+storage = SQLStorage("fsm_storage.db")
 dp = Dispatcher(storage=storage)
 router = Router()
 TASHKENT_TZ = ZoneInfo("Asia/Tashkent")
